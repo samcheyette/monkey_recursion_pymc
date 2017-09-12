@@ -1,21 +1,40 @@
 
 import pymc3 as pm
-import theano as T
+
+#import thano.compile.ops as as_op
 from helpers import *
-from clean_steves_data import *
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
-
+#np.random.seed(123)
 
 
 def model(n_steps=5,burnin=5):
     global data
-    data = data.flatten()
+    alpha_prior = 0.1
+    alpha_init = np.ones((N_GROUPS,1))
+    noise_init = np.ones((N_GROUPS,1))*1e-2
+
+    parts_ones = np.ones((TOTAL_PARTS))
+    data_ones = np.ones(len(data[0]))
+
+    hds = store_hds(paren_lst, filt)
+    ns = np.sum(data, axis=1)
+
+
+    m_ass = np.where(assignments == 0)
+    k_ass = np.where(assignments == 1)
+    t_ass = np.where(assignments==2)
+
+    n_monk = len(m_ass[0])
+    n_kid = len(k_ass[0])
+    n_tsim = len(t_ass[0])
+
+
 
     with pm.Model() as m:
-        alpha = pm.Exponential('alpha', 1.0, shape=(N_GROUPS,1))
+        alpha = pm.Exponential('alpha', alpha_prior,
+                 shape=(N_GROUPS,1))
         beta = pm.Dirichlet('beta', np.ones(N_ALGS), 
                             shape=(N_GROUPS,N_ALGS))
 
@@ -23,32 +42,62 @@ def model(n_steps=5,burnin=5):
                             shape=(TOTAL_PARTS,N_ALGS))
 
 
-       # s = Categorical('s', algorithms, shape=(5,8))
-        theta_resp = theta.dot(algorithms)
-        #samp1 = random.randint(0, N_GROUPS*)
+        #theta_resp = theta.dot(algorithms) 
+       
+        monkey_theta = theta[m_ass]
+        kid_theta = theta[k_ass]
+        tsim_theta = theta[t_ass]
 
-        theta_resp = (theta_resp.flatten() * 
-                1/float(TOTAL_PARTS))
+        noise = pm.Beta("noise", 1,10, shape=3)
+        #noise = tt.as_tensor(np.array([0.1,0.2,0.3]))
 
-        algs = pm.Multinomial('algs', TOTAL_SAMPLES,
-                            theta_resp,
-                        shape=(TOTAL_SAMPLES),
-                        observed=data)
+        new_algs_monkey = format_algs_theano(hds, noise[0])
+        new_algs_kid = format_algs_theano(hds, noise[1])
+        new_algs_tsim = format_algs_theano(hds, noise[2])
 
-        trace = pm.sample(n_steps, tune=burnin)
+
+        monkey_algs = monkey_theta.dot(new_algs_monkey)
+        kid_algs = kid_theta.dot(new_algs_kid)
+        tsim_algs = tsim_theta.dot(new_algs_tsim)
+
+
+
+
+        lst = []
+        for i in xrange(n_monk):
+            lst.append(monkey_algs[i])
+        for i in xrange(n_kid):
+            lst.append(kid_algs[i])
+        for i in xrange(n_tsim):
+            lst.append(tsim_algs[i])
+
+        theta_resp = tt.stacklists(lst)
+        #theta_resp = monkey_theta.
+
+        #new_algs = format_algs_theano(hds, noise[0])
+
+
+
+
+        pm.Multinomial('resp', n=ns, p = theta_resp, 
+               shape=(TOTAL_PARTS, N_RESPS), observed=data)
+
+
+        #step = pm.Metropolis()
+        trace = pm.sample(n_steps,  
+            tune=burnin,target_accept=0.9)
         print_star("Model Finished!")
-
-        #map_ = pm.find_MAP()
 
 
 
     summary = pm.df_summary(trace)
 
-    fig, axs = plt.subplots(3, 2) # 3 RVs
+    fig, axs = plt.subplots(4, 2) # 3 RVs
     sv = pm.traceplot(trace, ax=axs)
     fig.savefig("trace.png")
 
     return summary
+
 
 
 
@@ -59,8 +108,8 @@ if __name__ == "__main__":
     #make parentheses lists, 
     #and hypotheses (e.g. OOMC)
 
-    MCMC_STEPS = 3000
-    BURNIN = 200
+    MCMC_STEPS = 100
+    BURNIN = 10
 
     paren_lst = make_lists()
     hyps = make_lists(prims=["(", "[", "]", ")",'O','C','M'])
@@ -70,6 +119,7 @@ if __name__ == "__main__":
                          thresh=0.5, rem_dup=True)
     alg_names = [x for x in filt]
     alg_types = get_algs_of_type(filt)
+
 
     ##############################################
 
@@ -95,13 +145,25 @@ if __name__ == "__main__":
 
     data = data_assignments[0]
     assignments = data_assignments[1]
-    algorithms = format_algs(paren_lst,filt)
     groups = ["monkeys", "kids","tsimane"]
+    alg_0 = get_0_columns(format_algs(paren_lst,filt, sm=0.0))
+    dat_0 = get_0_columns(data)
+    both_0 = list(alg_0.intersection(dat_0))
+
+    paren_lst = np.delete(np.array(paren_lst), both_0)
+    algorithms = format_algs(paren_lst,filt, sm=0.05)
+
+    data = np.delete(data, both_0, axis=1)
+    #algorithms = np.delete(algorithms, both_0, axis=1)
+    #algorithms =  algorithms/algorithms.sum(axis=1)[:,None]
+
+
 
     N_GROUPS = len(groups)
     TOTAL_SAMPLES = np.sum(data)
     TOTAL_PARTS = len(data)
     N_ALGS = len(algorithms)
+    N_RESPS = len(algorithms[0])
     #N_ALGS = len()
 
 
@@ -119,16 +181,21 @@ if __name__ == "__main__":
     ###################################################
 
 
-    grouped = group_vars(means, ["alpha", "beta", "theta"])
+    grouped = group_vars(means, ["alpha", "beta", "theta", "noise"])
     alpha = grouped["alpha"]
     beta = grouped["beta"]
     theta = grouped["theta"]
+    noise = grouped["noise"]
 
-    grouped_sds = group_vars(sds, ["alpha", "beta", "theta"])
+    grouped_sds = group_vars(sds, ["alpha", "beta", "theta", "noise"])
     alpha_sd = grouped_sds["alpha"]
     beta_sd = grouped_sds["beta"]
     theta_sd = grouped_sds["theta"]
+    noise_sd = grouped_sds["noise"]
 
+    noise_names = noise[0]
+    noise_vals = noise[1]
+    noise_sds = noise_sd[1]
     alpha_names = alpha[0]
     alpha_vals = alpha[1]
     alpha_sds = alpha_sd[1]
@@ -153,6 +220,8 @@ if __name__ == "__main__":
                                     which_type="Crossing")
     tail_betas = amount_alg_type(alg_types, beta_vals, 
                                     which_type="Tail")
+
+    print_star("Noise", groups, noise_vals)
     print_star("Recursive Betas", recursive_betas)
     print_star("Crossing Betas", crossing_betas)
     print_star("Tail Betas", tail_betas)
@@ -160,7 +229,7 @@ if __name__ == "__main__":
 
 
     #################################################
-    print_star("Alpha", alpha_names, alpha_vals)
+    print_star("Alpha", groups, alpha_vals)
     ind = np.arange(len(alpha_names))
     #width = 0.35
 
