@@ -4,6 +4,8 @@ import numpy as np
 import theano as T
 import theano.tensor as tt
 from clean_steves_data import *
+import re
+import editdistance
 
 matching_set = [('(', ')'), ('[', ']')]
 open_set = ["(", "["]
@@ -172,6 +174,8 @@ def format_algs(paren_lst, algs, sm=1e-2):
         resp = [0.0 for _ in xrange(len(paren_lst))]
         for i in xrange(len(paren_lst)):
             for alg_paren in alg:
+
+                #hd = editdistance.eval(alg_paren, paren_lst[i])
                 hd = hamming_distance(alg_paren, paren_lst[i])
                 resp[i] += sm ** hd
                 #if (resp[i] == None or 
@@ -280,7 +284,7 @@ def amount_alg_type(alg_types, values_lst, which_type = "Recursive"):
     return amounts
 
 def output_alphas(names, means, sds, file):
-    o = "who,mean,sd\n"
+    o = "who,mean,sds\n"
     for i in xrange(len(names)):
         name = names[i]
         mean = means[i]
@@ -292,7 +296,7 @@ def output_alphas(names, means, sds, file):
     f.close()
 
 def output_betas(names, group_alg, group_sds, order, alg_names, alg_types, file):
-    o = "who, alg_name, alg_type, val,sd\n"
+    o = "who, alg_name, alg_type, val,sds\n"
     for i in xrange(len(group_alg)):
         who = order[i]
         vals= group_alg[i]
@@ -311,7 +315,7 @@ def output_betas(names, group_alg, group_sds, order, alg_names, alg_types, file)
 
 def output_thetas(names, part_alg, part_sds, order, 
         alg_names, alg_types, file):
-    o = "who,id,alg_name,alg_type,val,sd\n"
+    o = "who,id,alg_name,alg_type,val,sds\n"
     for i in xrange(len(part_alg)):
         who = order[i]
         vals= part_alg[i]
@@ -354,6 +358,7 @@ def store_hds(paren_lst, algs):
             hds = []
             for alg_paren in alg:
                 hd = hamming_distance(alg_paren, paren_lst[i])
+                #hd = editdistance.eval(alg_paren, paren_lst[i])
                 hds.append(hd)
             #hds = np.array(hds)
             #hds_t = tt.as_tensor(hds)
@@ -375,80 +380,21 @@ def format_algs_theano(hds, sm):
 
 
 
-def get_hyp_gen_noise(hyp, available,
-                 open_available, 
-                 closed_available, 
-                 sofar="", mem_noise=0.1):
-
-
-    def find_match(m, available):
-        for r in available:
-            if (m, r) in matching_set or (r, m) in matching_set:
-                return r
-        return None
-    
-    if len(hyp) == 0:
-        return {"":1.0}
-
-    else:
-        h = hyp[0]
-        poss = {}
-        if h in "([])" and h in available:
-            poss[h] = 1.0
-
-        elif h == "O" and len(open_available)>0:
-            for o in open_available:
-                poss[o] = 1/float(len(open_available))
-
-        elif h == "C" and len(closed_available)>0:
-            for o in closed_available:
-                poss[o] = 1/float(len(closed_available))
-
-        elif h == "M" and len(closed_available) > 0:
-            for s in sofar[::-1]:
-                match = find_match(s, available)
-                if (match in closed_available):
-                    poss[match] = 1.0 
-                    
-
-        if len(poss.keys()) == 0:
-            poss["*"] = 1.0
-
-
-        ret_dcts = {}
-        for key in poss:
-
-            
-            new_av = copy.copy(available)
-            new_opav = copy.copy(open_available)
-            new_clav = copy.copy(closed_available)
-            new_sofar = sofar + key
-            if key in new_av:
-                new_av.remove(key)
-                if key in new_opav:
-                    new_opav.remove(key)
-                else:
-                    new_clav.remove(key)
-
-            from_here = get_hyp_gen(hyp[1:], 
-                                    new_av,
-                                    new_opav,
-                                    new_clav,
-                                    new_sofar)
-            prob_key = poss[key]
-            for k in from_here:
-                prob_here =from_here[k]
-                if key + k not in ret_dcts:
-                    ret_dcts[key + k] = 0.0
-                ret_dcts[key+k] += prob_here * prob_key
-
-        return ret_dcts
-
         
 
 
+def get_hyps_gen_noise_N(hyps,mem_noise):
+    r_dct = {}
+    for hyp in hyps:
+        hyp_gen = get_hyp_gen_noise_N(hyp, 
+            set(copy.copy(all_p)),
+            set(copy.copy(open_set)), 
+            set(copy.copy(closed_set)),mem_noise)
 
-        
+        r_dct[hyp] = copy.deepcopy(hyp_gen)
+    return r_dct
+
+
 
 if __name__ == "__main__":
     paren_lst = make_lists()
@@ -484,11 +430,15 @@ if __name__ == "__main__":
     data = data_assignments[0]
 
     ###########################################################
-
-    mem_algs = memory_noise(filt, noise=0.2, prims=["O", "C", "M"])
+    #mem_algs = get_hyps_gen_noise(["OOMM", "OOCM", "OOCC", "([])", 
+       # "OO)]", "([CC", "([MM"],
+           #     mem_noise=0.1)
     #print mem_algs
+    print_star("")
 
-    """
+
+
+
     alg_0 = get_0_columns(format_algs(paren_lst,filt, sm=0.0))
     dat_0 = get_0_columns(data)
     both_0 = list(alg_0.intersection(dat_0))
@@ -522,4 +472,3 @@ if __name__ == "__main__":
     algs = tt.stacklists(lst)
 
     print algs.shape.eval()
-    """

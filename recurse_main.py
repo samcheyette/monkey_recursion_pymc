@@ -11,7 +11,7 @@ import seaborn as sns
 
 def model(n_steps=5,burnin=5):
     global data
-    alpha_prior = 0.1
+    alpha_prior = 1.
     alpha_init = np.ones((N_GROUPS,1))
     noise_init = np.ones((N_GROUPS,1))*1e-2
 
@@ -35,21 +35,28 @@ def model(n_steps=5,burnin=5):
     with pm.Model() as m:
         alpha = pm.Exponential('alpha', alpha_prior,
                  shape=(N_GROUPS,1))
+
+        #alpha = np.ones((N_GROUPS, 1)) * 10.
         beta = pm.Dirichlet('beta', np.ones(N_ALGS), 
                             shape=(N_GROUPS,N_ALGS))
 
-        theta = pm.Dirichlet('theta', alpha[assignments] * beta[assignments], 
+
+        theta = pm.Dirichlet('theta',  alpha[assignments] * beta[assignments], 
                             shape=(TOTAL_PARTS,N_ALGS))
 
 
+        #theta = pm.Dirichlet('theta', np.ones(N_ALGS), 
+                        #shape=(TOTAL_PARTS, N_ALGS))
+
+
+
+        noise = pm.Beta("noise", 1,9, shape=3)
+
         #theta_resp = theta.dot(algorithms) 
-       
         monkey_theta = theta[m_ass]
         kid_theta = theta[k_ass]
         tsim_theta = theta[t_ass]
 
-        noise = pm.Beta("noise", 1,10, shape=3)
-        #noise = tt.as_tensor(np.array([0.1,0.2,0.3]))
 
         new_algs_monkey = format_algs_theano(hds, noise[0])
         new_algs_kid = format_algs_theano(hds, noise[1])
@@ -61,8 +68,6 @@ def model(n_steps=5,burnin=5):
         tsim_algs = tsim_theta.dot(new_algs_tsim)
 
 
-
-
         lst = []
         for i in xrange(n_monk):
             lst.append(monkey_algs[i])
@@ -72,11 +77,6 @@ def model(n_steps=5,burnin=5):
             lst.append(tsim_algs[i])
 
         theta_resp = tt.stacklists(lst)
-        #theta_resp = monkey_theta.
-
-        #new_algs = format_algs_theano(hds, noise[0])
-
-
 
 
         pm.Multinomial('resp', n=ns, p = theta_resp, 
@@ -85,7 +85,7 @@ def model(n_steps=5,burnin=5):
 
         #step = pm.Metropolis()
         trace = pm.sample(n_steps,  
-            tune=burnin,target_accept=0.9)
+            tune=burnin,target_accept=0.85)
         print_star("Model Finished!")
 
 
@@ -109,14 +109,25 @@ if __name__ == "__main__":
     #and hypotheses (e.g. OOMC)
 
     MCMC_STEPS = 100
-    BURNIN = 10
+    BURNIN = 25
 
     paren_lst = make_lists()
-    hyps = make_lists(prims=["(", "[", "]", ")",'O','C','M'])
+    #hyps = make_lists(prims=["(", "[", "]", ")",'O','C','M'])
+    hyps = make_lists(prims=["(","[", "]", ")"]) ##O", "C", "M"])
+    hyps.append("OOMM")
+    hyps.append("OOCC")
+    hyps.append("OO)]")
+    hyps.append("OO])")
+    hyps.append("OMOM")
+    hyps.append("([CC")
+    hyps.append("[(CC")
+
     gen = get_hyps_gen(hyps)
 
     filt = filter_hyps(copy.deepcopy(gen),
                          thresh=0.5, rem_dup=True)
+
+
     alg_names = [x for x in filt]
     alg_types = get_algs_of_type(filt)
 
@@ -144,6 +155,7 @@ if __name__ == "__main__":
                      tsimane_data)
 
     data = data_assignments[0]
+    print data
     assignments = data_assignments[1]
     groups = ["monkeys", "kids","tsimane"]
     alg_0 = get_0_columns(format_algs(paren_lst,filt, sm=0.0))
@@ -151,8 +163,9 @@ if __name__ == "__main__":
     both_0 = list(alg_0.intersection(dat_0))
 
     paren_lst = np.delete(np.array(paren_lst), both_0)
-    algorithms = format_algs(paren_lst,filt, sm=0.05)
+    algorithms = format_algs(paren_lst,filt, sm=0.1)
 
+    x = 0
     data = np.delete(data, both_0, axis=1)
     #algorithms = np.delete(algorithms, both_0, axis=1)
     #algorithms =  algorithms/algorithms.sum(axis=1)[:,None]
@@ -206,7 +219,9 @@ if __name__ == "__main__":
     theta_vals = np.array(theta[1]).reshape(TOTAL_PARTS, N_ALGS)
     theta_sds = np.array(theta_sd[1]).reshape(TOTAL_PARTS, N_ALGS)
         
-    output_alphas(groups, alpha_vals, alpha_sds, "model_out/alphas.csv")   
+    output_alphas(groups, alpha_vals, alpha_sds, "model_out/alphas.csv")
+    output_alphas(groups, noise_vals, noise_sds, "model_out/noise.csv")   
+  
     output_betas(beta_names, beta_vals, beta_sds, groups, 
                     alg_names, alg_types,"model_out/betas.csv") 
 

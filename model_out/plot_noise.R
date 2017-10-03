@@ -5,7 +5,7 @@ library(dplyr)
 
 ##########READ FILE#########################################
 
-file <- "alphas.csv"
+file <- "noise.csv"
 data = read.csv(file)
 data$who = factor(data$who,levels(data$who)[c(3,1,2)])
 
@@ -29,14 +29,14 @@ t1 <- 	theme(axis.text=element_text(size=26),
 
 p.1 <- ggplot(data, aes(x=who,y=mean)) +
 		geom_bar(position='dodge', stat='identity') +
+
 		#geom_point(size=3.0) +
-		geom_errorbar(aes(ymin=mean-sd/2., 
-			ymax=mean+sd/2.), width=0.0)
+		geom_errorbar(aes(ymin=mean-sds, 
+			ymax=mean+sds), width=0.)
 
 
 p.1 <- p.1 + t1 + 
-			ylab("Alpha Value")# +
-			# ggtitle("Alpha (Clustering)") #+
-			# ylim(0,150)
+			ylab("Noise Value") #+
+			# ggtitle("Noise")
 
-ggsave("alphas.png", width=8, height=7)
+ggsave("noise.png", width=8, height=7)
