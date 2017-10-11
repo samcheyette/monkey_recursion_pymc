@@ -2,6 +2,7 @@ library(ggplot2)
 library(reshape)
 library(grid)
 library(dplyr)
+library(distrEx)
 
 ##########READ FILE#########################################
 
@@ -43,8 +44,8 @@ t1 <- 	theme(axis.text=element_text(size=26),
 ###############################################################
 
 
-x <- data %>%
-	filter(grepl("tsimane", who))
+#x <- data %>%
+	#filter(grepl("tsimane", who))
 
 #sum(x$sd)
 #data <- data %>% 
@@ -57,14 +58,36 @@ x <- data %>%
 #data$who <- factor(data$who,levels(data$who)[c(2,1,3)])
 #levels(data$who) <- levels(data$who)[2,3,1]
 
+#m.reg.1 <- lm(data=data, val~who +alg_type + alg_type*who)
 
-head(data)
+x_monk <- data %>% filter(grepl("monkey", who))
+
+x_tsim <- data %>% filter(grepl("tsimane", who))
+
+x_kids <- data %>% filter(grepl("kids", who))
+
+y_monk <- x_monk$val
+y_tsim <- x_tsim$val
+y_kids <- x_kids$val
+
+summary(lm(y_tsim ~ y_kids))
+#lm(y_tsim ~ y_monk)
+
+#HellingerDist(y_monk, y_tsim)
+cor(y_monk,y_tsim)
+cor(y_monk,y_kids)
+cor(y_tsim,y_kids)
+
+head(x_monk$val)
+head(x_tsim$val)
+#m.reg.1
+#head(data)
 ###############################################################
 
 
 m.1 <- data %>% 
 		group_by(who) %>%
-		mutate(sds = sum(sds)) %>%
+		mutate(sds = mean(sds)) %>%
 
 		group_by(who, alg_type) %>%
 		mutate(mean_type=sum(val)) %>%

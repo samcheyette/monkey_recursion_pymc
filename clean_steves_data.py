@@ -105,7 +105,7 @@ def getCounts(resps, dictMap):
 
 
 def getCountData(file, careAbout, which, subset={}):
-    if which == "Kids":
+    if which == "Kids" or which == "Adults":
         careAbout = [careAbout]
         resps = getKidsResponses(file, careAbout)
     else:
@@ -120,10 +120,49 @@ def getCountData(file, careAbout, which, subset={}):
 
 
 if __name__ == "__main__":
-    file = "stevesdata/RecursionMonkey.csv"
+    import scipy.stats as st
     careAbout = "Order pressed"
+    ##
+
+
+    """
+    file = "stevesdata/RecursionKids.csv"
+
+    count = getCountData(file, careAbout, "Kids")
+
+    file = "stevesdata/RecursionTsimane.csv"
+
+    count = getCountData(file, careAbout, "Tsimane")
+
+    file = "stevesdata/RecursionMonkey.csv"
 
     count = getCountData(file, careAbout, "blorb", 
                 subset={"Experiment" :
                  ["Experiment 2"]})
+
+    """
+
+
+    file = "stevesdata/RecursionAdults.csv"
+
+    count = getCountData(file, careAbout, "Adults")
     print count
+
+    CE =  ["([])", "[()]"]
+    n_CE = []
+    n_tot = []
+    for part in count:
+        n_CE_i = 0.
+        tot_i = 0.
+        for resp in part:
+            n_resp = part[resp]
+
+            r= "".join(list(resp))
+
+            if r in CE:
+                n_CE_i  += n_resp
+            tot_i += n_resp
+        n_CE.append(n_CE_i)
+        n_tot.append(tot_i)
+
+    print n_CE,n_tot, sum(n_CE)/sum(n_tot)

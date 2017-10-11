@@ -5,9 +5,15 @@ library(dplyr)
 
 ##########READ FILE#########################################
 
-file <- "alphas.csv"
-data = read.csv(file)
-data$who = factor(data$who,levels(data$who)[c(3,1,2)])
+file_monkey <- "RecursionMonkey.csv"
+file_kids <- "RecursionKids.csv"
+file_tsimane<- "RecursionTsimane.csv"
+
+data_monkey = read.csv(file_monkey)
+data_kids = read.csv(file_kids)
+data_tsimane = read.csv(file_tsimane)
+
+head(data_monkey)
 
 #m = melt(data, id=c("who", "mean"))
 t1 <- 	theme(axis.text=element_text(size=26), 
@@ -20,23 +26,8 @@ t1 <- 	theme(axis.text=element_text(size=26),
 		axis.text.y=element_text(size=26),
 
 		legend.title=element_blank(),
-		legend.text=element_text(size=26),
-		 legend.key.size = unit(4, 'lines'),
+		legend.text=element_text(size=20),
+		 legend.key.size = unit(3, 'lines'),
 		 panel.background = element_blank(),
 		 axis.line = element_line(colour = "black"))
-###############################################################
 
-
-p.1 <- ggplot(data, aes(x=who,y=mean)) +
-		geom_bar(position='dodge', stat='identity') +
-		#geom_point(size=3.0) +
-		geom_errorbar(aes(ymin=mean-sds, 
-			ymax=mean+sds), width=0.0)
-
-
-p.1 <- p.1 + t1 + 
-			ylab("Alpha Value")# +
-			# ggtitle("Alpha (Clustering)") #+
-			# ylim(0,150)
-
-ggsave("alphas.png", width=8, height=7)

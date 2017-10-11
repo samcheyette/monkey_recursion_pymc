@@ -175,8 +175,8 @@ def format_algs(paren_lst, algs, sm=1e-2):
         for i in xrange(len(paren_lst)):
             for alg_paren in alg:
 
-                #hd = editdistance.eval(alg_paren, paren_lst[i])
-                hd = hamming_distance(alg_paren, paren_lst[i])
+                hd = editdistance.eval(alg_paren, paren_lst[i])
+                #hd = hamming_distance(alg_paren, paren_lst[i])
                 resp[i] += sm ** hd
                 #if (resp[i] == None or 
                    # (resp[i] < 0.2**hd)):
@@ -333,6 +333,41 @@ def output_thetas(names, part_alg, part_sds, order,
     f.write(o)
     f.close()
 
+def output_full_alpha_noise(trace, which, names,thin, out):
+    o = "sample,thin_sample,who,value\n"
+    for m in xrange(len(trace)):
+        assert(len(trace[m][which]) == len(names))
+        for n in xrange(len(trace[m][which])):
+            trial = m*thin
+            name = names[n]
+            val = trace[m][which][n]
+            o += ("%d,%d,%s,%f\n" % (m, trial, name, val))
+
+    f = open(out, "w+")
+    f.write(o)
+    f.close()
+
+
+def output_full_theta_beta(trace, which, groups,names,thin, out):
+    o = "sample,thin_sample,who,part,which,value\n"
+    for m1 in xrange(len(trace)):
+        trial = m1 * thin
+        assert(len(trace[m1][which]) == len(groups))
+        for m2 in xrange(len(trace[m1][which])):
+            group = groups[m2]
+            assert(len(trace[m1][which][m2]) == len(names))
+            for n in xrange(len(trace[m1][which][m2])):
+                name = names[n]
+                val = trace[m1][which][m2][n]
+
+                o += ("%d,%d,%s,%d,%s,%f\n" % (m1, trial, str(group), m2, str(name), val))
+
+    f = open(out, "w+")
+    f.write(o)
+    f.close()
+
+
+
 
 
 def get_0_columns(arr):
@@ -357,8 +392,8 @@ def store_hds(paren_lst, algs):
         for i in xrange(len(paren_lst)):
             hds = []
             for alg_paren in alg:
-                hd = hamming_distance(alg_paren, paren_lst[i])
-                #hd = editdistance.eval(alg_paren, paren_lst[i])
+                #hd = hamming_distance(alg_paren, paren_lst[i])
+                hd = editdistance.eval(alg_paren, paren_lst[i])
                 hds.append(hd)
             #hds = np.array(hds)
             #hds_t = tt.as_tensor(hds)
@@ -395,6 +430,8 @@ def get_hyps_gen_noise_N(hyps,mem_noise):
     return r_dct
 
 
+
+#def get_distribution_parens(parts)
 
 if __name__ == "__main__":
     paren_lst = make_lists()

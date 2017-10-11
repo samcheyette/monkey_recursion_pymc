@@ -5,13 +5,15 @@ import pymc3 as pm
 from helpers import *
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pymc3.backends.base import merge_traces
 
 #np.random.seed(123)
 
 
-def model(n_steps=5,burnin=5):
+def model():
     global data
     alpha_prior = 1.
+    beta_prior = 0.1
     alpha_init = np.ones((N_GROUPS,1))
     noise_init = np.ones((N_GROUPS,1))*1e-2
 
@@ -36,23 +38,23 @@ def model(n_steps=5,burnin=5):
         alpha = pm.Exponential('alpha', alpha_prior,
                  shape=(N_GROUPS,1))
 
-        #alpha = np.ones((N_GROUPS, 1)) * 10.
-        beta = pm.Dirichlet('beta', np.ones(N_ALGS), 
+
+        #alpha = np.ones((N_GROUPS, 1)) * 20.
+        beta = pm.Dirichlet('beta', np.ones(N_ALGS)*beta_prior,
+                        # testval=np.ones(N_ALGS),
                             shape=(N_GROUPS,N_ALGS))
 
 
+
         theta = pm.Dirichlet('theta',  alpha[assignments] * beta[assignments], 
-                            shape=(TOTAL_PARTS,N_ALGS))
-
-
-        #theta = pm.Dirichlet('theta', np.ones(N_ALGS), 
-                        #shape=(TOTAL_PARTS, N_ALGS))
+                            shape=(TOTAL_PARTS,N_ALGS)) 
 
 
 
-        noise = pm.Beta("noise", 1,9, shape=3)
 
-        #theta_resp = theta.dot(algorithms) 
+        noise = pm.Beta("noise", 1,9, shape=3, testval=0.1)
+        theta_resp = theta.dot(algorithms) 
+        """
         monkey_theta = theta[m_ass]
         kid_theta = theta[k_ass]
         tsim_theta = theta[t_ass]
@@ -78,25 +80,27 @@ def model(n_steps=5,burnin=5):
 
         theta_resp = tt.stacklists(lst)
 
-
+    """
         pm.Multinomial('resp', n=ns, p = theta_resp, 
                shape=(TOTAL_PARTS, N_RESPS), observed=data)
 
 
         #step = pm.Metropolis()
-        trace = pm.sample(n_steps,  
-            tune=burnin,target_accept=0.85)
+        trace = pm.sample(MCMC_STEPS,njobs=MCMC_CHAINS,
+            tune=BURNIN,target_accept=0.5, thin=MCMC_THIN)
         print_star("Model Finished!")
 
 
 
     summary = pm.df_summary(trace)
 
+    #for t in trace:
+       # print t['noise']
     fig, axs = plt.subplots(4, 2) # 3 RVs
     sv = pm.traceplot(trace, ax=axs)
     fig.savefig("trace.png")
 
-    return summary
+    return trace, summary
 
 
 
@@ -108,12 +112,15 @@ if __name__ == "__main__":
     #make parentheses lists, 
     #and hypotheses (e.g. OOMC)
 
-    MCMC_STEPS = 100
-    BURNIN = 25
+    MCMC_STEPS = 250
+    MCMC_THIN = 10
+    MCMC_CHAINS=1
+    BURNIN = 50
+
 
     paren_lst = make_lists()
-    #hyps = make_lists(prims=["(", "[", "]", ")",'O','C','M'])
-    hyps = make_lists(prims=["(","[", "]", ")"]) ##O", "C", "M"])
+    hyps = make_lists(prims=["(", "[", "]", ")"])
+    #hyps = make_lists(prims=["(","[", "]", ")", "O", "C", "M"])
     hyps.append("OOMM")
     hyps.append("OOCC")
     hyps.append("OO)]")
@@ -155,7 +162,6 @@ if __name__ == "__main__":
                      tsimane_data)
 
     data = data_assignments[0]
-    print data
     assignments = data_assignments[1]
     groups = ["monkeys", "kids","tsimane"]
     alg_0 = get_0_columns(format_algs(paren_lst,filt, sm=0.0))
@@ -163,7 +169,7 @@ if __name__ == "__main__":
     both_0 = list(alg_0.intersection(dat_0))
 
     paren_lst = np.delete(np.array(paren_lst), both_0)
-    algorithms = format_algs(paren_lst,filt, sm=0.1)
+    algorithms = format_algs(paren_lst,filt, sm=0.05)
 
     x = 0
     data = np.delete(data, both_0, axis=1)
@@ -183,8 +189,12 @@ if __name__ == "__main__":
     print_star("TOTAL_SAMPLES", TOTAL_SAMPLES)
     print_star("N_ALGS",N_ALGS)
     print_star("TOTAL_PARTS", TOTAL_PARTS)
+    print_star("N_RESPS", N_RESPS)
 
-    model_out = model(MCMC_STEPS, BURNIN)
+
+
+
+    trace, model_out = model()
 
 
 
@@ -193,7 +203,15 @@ if __name__ == "__main__":
 
     ###################################################
 
+    output_full_alpha_noise(trace, 'noise',  
+        names=groups, thin=MCMC_THIN, out="model_out/noise_full.csv")
+    output_full_alpha_noise(trace, 'alpha',  
+        names=groups, thin=MCMC_THIN, out="model_out/alpha_full.csv")
+    output_full_theta_beta(trace, 'beta',  groups=groups,
+        names=alg_names, thin=MCMC_THIN, out="model_out/beta_full.csv")
 
+    output_full_theta_beta(trace, 'theta', groups=np.array(groups)[assignments],
+        names=alg_names, thin=MCMC_THIN, out="model_out/theta_full.csv")
     grouped = group_vars(means, ["alpha", "beta", "theta", "noise"])
     alpha = grouped["alpha"]
     beta = grouped["beta"]
