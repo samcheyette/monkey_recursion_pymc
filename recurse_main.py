@@ -1,19 +1,15 @@
-
 import pymc3 as pm
-
-#import thano.compile.ops as as_op
 from helpers import *
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pymc3.backends.base import merge_traces
 
-#np.random.seed(123)
+
 
 
 def model():
     global data
     alpha_prior = 1.
-    beta_prior = 0.1
+    beta_prior = 1.
     alpha_init = np.ones((N_GROUPS,1))
     noise_init = np.ones((N_GROUPS,1))*1e-2
 
@@ -27,78 +23,79 @@ def model():
     m_ass = np.where(assignments == 0)
     k_ass = np.where(assignments == 1)
     t_ass = np.where(assignments==2)
-
+    a_ass = np.where(assignments==3)
     n_monk = len(m_ass[0])
     n_kid = len(k_ass[0])
     n_tsim = len(t_ass[0])
+    n_adult = len(a_ass[0])
 
+    smooth =  np.ones((TOTAL_PARTS,N_ALGS)) * beta_prior
 
+    #bias in choice of starting parenthesis
+    start_p = store_start_p(paren_lst, n=TOTAL_PARTS, lst = ["("])
+    start_np = 1 - start_p
 
     with pm.Model() as m:
         alpha = pm.Exponential('alpha', alpha_prior,
                  shape=(N_GROUPS,1))
 
 
-        #alpha = np.ones((N_GROUPS, 1)) * 20.
-        beta = pm.Dirichlet('beta', np.ones(N_ALGS)*beta_prior,
+        #alpha = np.ones((N_GROUPS, 1)) * 5.
+        beta = pm.Dirichlet('beta', np.ones((N_GROUPS, N_ALGS))*beta_prior,
                         # testval=np.ones(N_ALGS),
-                            shape=(N_GROUPS,N_ALGS))
+                            shape=(N_GROUPS,N_ALGS)) 
 
 
 
         theta = pm.Dirichlet('theta',  alpha[assignments] * beta[assignments], 
-                            shape=(TOTAL_PARTS,N_ALGS)) 
+                           shape=(TOTAL_PARTS,N_ALGS)) 
 
 
+        noise = pm.Beta("noise", 1,9, shape=N_GROUPS, testval=0.1)
+        #noise_alg = algorithms + noise[assignments]
 
-
-        noise = pm.Beta("noise", 1,9, shape=3, testval=0.1)
-        theta_resp = theta.dot(algorithms) 
-        """
+        #theta_resp = theta.dot(algorithms) 
         monkey_theta = theta[m_ass]
         kid_theta = theta[k_ass]
         tsim_theta = theta[t_ass]
+        adult_theta = theta[a_ass]
 
 
         new_algs_monkey = format_algs_theano(hds, noise[0])
         new_algs_kid = format_algs_theano(hds, noise[1])
         new_algs_tsim = format_algs_theano(hds, noise[2])
+        new_algs_adult = format_algs_theano(hds, noise[3])
 
 
         monkey_algs = monkey_theta.dot(new_algs_monkey)
         kid_algs = kid_theta.dot(new_algs_kid)
         tsim_algs = tsim_theta.dot(new_algs_tsim)
+        adult_algs = adult_theta.dot(new_algs_adult)
 
+        theta_resp = tt.concatenate([monkey_algs, kid_algs,
+                 tsim_algs, adult_algs], axis=0)
 
-        lst = []
-        for i in xrange(n_monk):
-            lst.append(monkey_algs[i])
-        for i in xrange(n_kid):
-            lst.append(kid_algs[i])
-        for i in xrange(n_tsim):
-            lst.append(tsim_algs[i])
+        bias = pm.Beta("bias", 2,2,shape=(TOTAL_PARTS,1))
 
-        theta_resp = tt.stacklists(lst)
-
-    """
-        pm.Multinomial('resp', n=ns, p = theta_resp, 
+        biased_theta_resps = start_p * bias * theta_resp + start_np * (1.-bias) * theta_resp
+        sum_norm = biased_theta_resps.sum(axis=1).reshape((TOTAL_PARTS,1))
+        biased_theta_resps = biased_theta_resps / sum_norm
+        pm.Multinomial('resp', n=ns, p = biased_theta_resps, 
                shape=(TOTAL_PARTS, N_RESPS), observed=data)
 
-
+    
         #step = pm.Metropolis()
-        trace = pm.sample(MCMC_STEPS,njobs=MCMC_CHAINS,
-            tune=BURNIN,target_accept=0.5, thin=MCMC_THIN)
+        trace = pm.sample(MCMC_STEPS,
+            tune=BURNIN,target_accept=0.9, thin=MCMC_THIN)
         print_star("Model Finished!")
 
 
 
     summary = pm.df_summary(trace)
+    which = 45
+    samp =100
 
-    #for t in trace:
-       # print t['noise']
-    fig, axs = plt.subplots(4, 2) # 3 RVs
-    sv = pm.traceplot(trace, ax=axs)
-    fig.savefig("trace.png")
+
 
     return trace, summary
 
@@ -112,28 +109,16 @@ if __name__ == "__main__":
     #make parentheses lists, 
     #and hypotheses (e.g. OOMC)
 
-    MCMC_STEPS = 250
+    MCMC_STEPS = 10000
     MCMC_THIN = 10
     MCMC_CHAINS=1
-    BURNIN = 50
-
-
+    BURNIN = 500
     paren_lst = make_lists()
-    hyps = make_lists(prims=["(", "[", "]", ")"])
-    #hyps = make_lists(prims=["(","[", "]", ")", "O", "C", "M"])
-    hyps.append("OOMM")
-    hyps.append("OOCC")
-    hyps.append("OO)]")
-    hyps.append("OO])")
-    hyps.append("OMOM")
-    hyps.append("([CC")
-    hyps.append("[(CC")
-
+    hyps = make_lists(prims=["O","M", "C"])
     gen = get_hyps_gen(hyps)
 
     filt = filter_hyps(copy.deepcopy(gen),
                          thresh=0.5, rem_dup=True)
-
 
     alg_names = [x for x in filt]
     alg_types = get_algs_of_type(filt)
@@ -150,7 +135,8 @@ if __name__ == "__main__":
 
     kids_data = getCountData("stevesdata/RecursionKids.csv", 
                                 careAbout, "Kids")
-
+    adults_data = getCountData("stevesdata/RecursionAdults.csv", 
+                                careAbout, "Adults")
     tsimane_data = getCountData("stevesdata/RecursionTsimane.csv", 
                                 careAbout, "Tsimane")
 
@@ -159,23 +145,32 @@ if __name__ == "__main__":
     data_assignments = lst_format_data(paren_lst,
                  monkey_data,
                      kids_data, 
-                     tsimane_data)
+                     tsimane_data,adults_data)
 
     data = data_assignments[0]
     assignments = data_assignments[1]
-    groups = ["monkeys", "kids","tsimane"]
+
+
+    groups = ["monkeys", "kids","tsimane","adults"]
     alg_0 = get_0_columns(format_algs(paren_lst,filt, sm=0.0))
+
     dat_0 = get_0_columns(data)
     both_0 = list(alg_0.intersection(dat_0))
 
     paren_lst = np.delete(np.array(paren_lst), both_0)
-    algorithms = format_algs(paren_lst,filt, sm=0.05)
+    algorithms = format_algs(paren_lst,filt, sm=0.1)
+    for a in xrange(len(algorithms)):
+        print alg_names[a]
 
-    x = 0
-    data = np.delete(data, both_0, axis=1)
+    #data = np.delete(data, both_0, axis=1)
+    data_assignments = lst_format_data(paren_lst,
+                 monkey_data,
+                     kids_data, 
+                     tsimane_data,adults_data)
+    data = data_assignments[0]
+    assignments = data_assignments[1]
     #algorithms = np.delete(algorithms, both_0, axis=1)
     #algorithms =  algorithms/algorithms.sum(axis=1)[:,None]
-
 
 
     N_GROUPS = len(groups)
@@ -187,6 +182,8 @@ if __name__ == "__main__":
 
 
     print_star("TOTAL_SAMPLES", TOTAL_SAMPLES)
+    print_star("N_GROUPS", N_GROUPS)
+
     print_star("N_ALGS",N_ALGS)
     print_star("TOTAL_PARTS", TOTAL_PARTS)
     print_star("N_RESPS", N_RESPS)

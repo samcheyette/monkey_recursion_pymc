@@ -2,6 +2,7 @@ library(ggplot2)
 library(reshape)
 library(grid)
 library(dplyr)
+library(magrittr)
 #library(HDInterval)
 
 file_beta <- "beta_full.csv"
@@ -12,6 +13,19 @@ file_theta <- "theta_full.csv"
 data_theta = read.csv(file_theta)
 data_theta$ID <- seq.int(nrow(data_theta))
 
+data_theta <- data_theta %>%
+        mutate(who=as.factor(gsub("monkeys","Monkeys",as.character(who)))) %>%
+        mutate(who=as.factor(gsub("tsimane","Tsimane",as.character(who)))) %>%
+        mutate(who=as.factor(gsub("adults","US Adults",as.character(who)))) %>%
+        mutate(who=as.factor(gsub("kids","US Kids",as.character(who))))
+
+
+data_beta <- data_beta %>%
+        mutate(who=as.factor(gsub("monkeys","Monkeys",as.character(who)))) %>%
+        mutate(who=as.factor(gsub("tsimane","Tsimane",as.character(who)))) %>%
+        mutate(who=as.factor(gsub("adults","US Adults",as.character(who)))) %>%
+        mutate(who=as.factor(gsub("kids","US Kids",as.character(who))))
+
 take_after <- 0
 
 
@@ -21,7 +35,7 @@ paper_theme <- theme(#legend.title=element_text( size = 14, face="plain"),
                      #legend.text=element_blank(),
 
                      axis.title.x = element_text(size=0),
-                     axis.text.x=element_text(colour="black", size = 14), 
+                     axis.text.x=element_text(colour="black", size = 12), 
                      axis.title.y = element_text(size = 14, vjust = 1),
                      axis.text.y  = element_text(size = 12),
                      panel.grid.major = element_blank(), 
@@ -33,16 +47,19 @@ paper_theme <- theme(#legend.title=element_text( size = 14, face="plain"),
 
 ############################READ FILE#########################################
 
-data_theta$who = factor(data_theta$who,levels(data_theta$who)[c(3,1,2)])
-data_beta$who = factor(data_beta$who,levels(data_beta$who)[c(3,1,2)])
+#data_theta$who = factor(data_theta$who,levels(data_theta$who)[c(2,3,4,1)])
+#data_beta$who = factor(data_beta$who,levels(data_beta$who)[c(2,3,4,1)])
+
+print(1)
 data_theta <- data_theta %>%
                     filter(sample > take_after)
 data_beta <- data_beta %>%
                     filter(sample > take_after)
 
 
+
 m.rec.betas <- data_beta %>%
-         filter(which %in% c("[()]", "([])", "OOMM")) %>%
+         filter(which %in% c("[()]", "([])", "OOMM", "OOMC")) %>%
          group_by(who, part, sample) %>%
          mutate(recursive=sum(value)) %>%
          top_n(n=1, wt=ID) %>%
@@ -52,13 +69,15 @@ m.rec.betas <- data_beta %>%
 
 
        mutate(av=median(recursive)) %>%
-       top_n(n=1,wt=sample) %>%
-        mutate(x_val=as.numeric(who)) 
+       top_n(n=1,wt=sample)
+
 head(m.rec.betas)
+
+
 
 m.rec.thetas <- data_theta %>%
 
-         filter(which %in% c("[()]", "([])", "OOMM")) %>%
+         filter(which %in% c("[()]", "([])", "OOMM", "OOMC")) %>%
          group_by(who, part, sample) %>%
          mutate(recursive=sum(value)) %>%
          top_n(n=1, wt=ID) %>%
@@ -68,7 +87,28 @@ m.rec.thetas <- data_theta %>%
 
        mutate(av=median(recursive)) %>%
        top_n(n=1,wt=sample) %>%
-       mutate(x_val=as.numeric(who) + runif(1,-0.2,0.2))
+       ungroup
+
+
+m.rec.betas <- m.rec.betas %>%
+                transform(who=factor(reorder(who, av))) %>%
+                mutate(x_val=as.numeric(who)) 
+
+
+levels(m.rec.thetas$who)
+
+
+beta_who <- levels(m.rec.betas$who)
+m.rec.thetas <- m.rec.thetas %>%
+        group_by(part) %>%
+        mutate(ord=which(!is.na(match(beta_who, who)))[1]) %>%
+
+        mutate(x_val=ord + runif(1,-0.2,0.2)) %>%
+        group_by(who) %>%
+        transform(who=factor(reorder(who, ord))) 
+
+
+levels(m.rec.thetas$who)
 
 
 
@@ -91,18 +131,18 @@ p.1 <- ggplot(data=m.rec.thetas, aes(x=x_val, y=av)) +
 
 
 
-brk <- c(0.0,0.055,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9)
-lab <- c("0","prior","0.1","0.2","0.3","0.4","0.5","0.6","0.7","0.8", "0.9")
+brk <- c(0.0,0.055,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0)
+lab <- c("0","prior","0.1","0.2","0.3","0.4","0.5","0.6","0.7","0.8", "0.9","1.0")
 my.labs <- list(expression(Group (beta)),expression(Individual (theta)))
        
 p.1 <- p.1 + paper_theme +
             ylab("p(recursive)") + 
-            theme(legend.position = c(0.8, 0.9))  +
+            theme(legend.position = c(0.15, 0.9))  +
 
-            scale_y_continuous(breaks=brk, labels=lab) +
+            scale_y_continuous(breaks=brk, labels=lab,expand=c(0.01,0.001)) +
 
-                scale_x_continuous(limits=c(0.5,3.5),
-                breaks=c(1,2,3),labels=c("Tsimane","US Kids","Monkeys")) +
+                scale_x_continuous(limits=c(0.5,4.5),
+                breaks=c(1,2,3,4),labels=levels(m.rec.thetas$who)) +
             scale_color_manual(values=c("#b30000","black"),
           labels=my.labs)
 
@@ -133,14 +173,14 @@ m.rec.thetas <- data_theta %>%
          mutate(prb=sum(prb)) %>%
          top_n(n=1,wt=ID) %>%
          group_by(who,sample) %>%
-         mutate(prb=mean(prb)) %>%
+         mutate(prb=median(prb)) %>%
          top_n(n=1,wt=ID) %>%
          #top_n(n=1, wt=ID) %>%
 
          #top_n(n=1, wt=sample) %>%
          group_by(who) %>%
-         mutate(ci_95=quantile(prb,.95)) %>%
-         mutate(ci_5=quantile(prb,.05)) %>%
+         mutate(ci_95=quantile(prb,.9)) %>%
+         mutate(ci_5=quantile(prb,.1)) %>%
          mutate(prb=median(prb)) %>%
             #mutate(ci_95=mean(ci_95)) %>%
            # mutate(ci_5=mean(ci_5)) %>%
@@ -157,39 +197,55 @@ head(m.rec.thetas)
 
 
 m.rec.thetas.noise <- m.rec.thetas %>%
-        mutate(prb=  prb - 0.3 * prb * as.numeric(grepl("monk", who))) %>%
-        mutate(prb= prb - 0.04 * prb * as.numeric(grepl("kid", who))) %>%
-        mutate(prb= prb - 0.01 * prb* as.numeric(grepl("tsim", as.character(who)))) %>%
-        mutate(ci_95=  ci_95 - 0.3 * ci_95 * as.numeric(grepl("monk", who))) %>%
-        mutate(ci_95= ci_95 - 0.04 * ci_95 * as.numeric(grepl("kid", who))) %>%
-        mutate(ci_95= ci_95 - 0.01 *ci_95 * as.numeric(grepl("tsim", as.character(who)))) %>%
-        mutate(ci_5=  ci_5 - 0.3 * ci_5 * as.numeric(grepl("monk", who))) %>%
-        mutate(ci_5= ci_5 - 0.04 * ci_5 * as.numeric(grepl("kid", who))) %>%
-        mutate(ci_5= ci_5 - 0.01 * ci_5* as.numeric(grepl("tsim", as.character(who)))) 
+        mutate(prb=  prb - 0.3 * prb * as.numeric(grepl("Monk", who))) %>%
+        mutate(prb= prb - 0.04 * prb * as.numeric(grepl("Kid", who))) %>%
+        mutate(prb= prb - 0.01 * prb* as.numeric(grepl("Tsim", as.character(who)))) %>%
+        mutate(prb= prb - 0.005 * prb* as.numeric(grepl("Tdu", as.character(who)))) %>%
+       
+        mutate(ci_95=  ci_95 - 0.3 * ci_95 * as.numeric(grepl("Monk", who))) %>%
+        mutate(ci_95= ci_95 - 0.04 * ci_95 * as.numeric(grepl("Kid", who))) %>%
+        mutate(ci_95= ci_95 - 0.01 *ci_95 * as.numeric(grepl("Tsim", as.character(who)))) %>%
+        mutate(ci_95= ci_95 - 0.005 * ci_5* as.numeric(grepl("Adu", as.character(who)))) %>%
+        
+        mutate(ci_5=  ci_5 - 0.3 * ci_5 * as.numeric(grepl("Monk", who))) %>%
+        mutate(ci_5= ci_5 - 0.04 * ci_5 * as.numeric(grepl("Kid", who))) %>%
+        mutate(ci_5= ci_5 - 0.01 * ci_5* as.numeric(grepl("Tsim", as.character(who)))) %>%
+        mutate(ci_5= ci_5 - 0.005 * ci_5* as.numeric(grepl("Adu", as.character(who)))) 
 
 
          #mutate(rec=rec * )
 
 
-m.rec.thetas <- m.rec.thetas %>% mutate(noise=factor("No Noise"))
-m.rec.thetas.noise <- m.rec.thetas.noise %>% mutate(noise=factor("Noise"))
+m.rec.thetas <- m.rec.thetas %>% mutate(noise="B")
+m.rec.thetas.noise <- m.rec.thetas.noise %>% mutate(noise="A")
 
 m.2 <- rbind(m.rec.thetas,m.rec.thetas.noise)
 
-off <- 0.04
+m.2 <- m.2%>%
+                transform(who=factor(reorder(who, prb))) 
 
-p.1 <- ggplot(data=m.2, aes(x=who, y=prb+off, group=noise)) +
+
+#off <- 0.03
+w <- 0.45
+p.1 <- ggplot(data=m.2, aes(x=who, y=prb, group=noise)) +
             geom_bar(stat='identity', position='dodge',
              aes(fill=noise,group=noise)) +
-            geom_errorbar(aes(ymin=ci_5+off,ymax=ci_95+off, group=noise),
-                    position='dodge',  size=0.3) 
+            geom_errorbar(aes(ymin=ci_5,ymax=ci_95, group=noise),
+                  position=position_dodge(width=0.9),  width=w, size=0.3) 
 
 
-brk <- seq(0,7)/10.
+brk <- seq(0,10)/10.
 
-p.1 <- p.1 +paper_theme + 
-        scale_y_continuous(breaks=brk,expand=c(0.05,0.05)) +
-        scale_x_discrete(labels=c("Tsimane","US Kids","Monkeys"))
+lwho <- levels(m.2$who)
+
+p.1 <- p.1 +paper_theme + ylab("p(center-embedding)") +
+        ylim(0,1)+
+        scale_y_continuous(breaks=brk)+#,expand=c(0.0,0.0)) +
+        scale_x_discrete(labels=lwho) + 
+         scale_fill_manual(values=c("#b30000","#87A485"),
+          labels=c("Noise", "No Noise")) +
+            theme(legend.position = c(0.2, 0.9)) 
+
 
 head(m.rec.thetas)
-ggsave("thetas_recursive_no_noise.png",width=6,height=4)
+ggsave("thetas_recursive_no_noise.png",width=4,height=4)

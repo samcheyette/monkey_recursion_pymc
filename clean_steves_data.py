@@ -143,19 +143,40 @@ if __name__ == "__main__":
     """
 
 
-    file = "stevesdata/RecursionAdults.csv"
+   # file = "stevesdata/RecursionAdults.csv"
+    #count = getCountData(file, careAbout, "Adults")
 
-    count = getCountData(file, careAbout, "Adults")
-    print count
+    file = "stevesdata/RecursionKids.csv"
+
+    count = getCountData(file, careAbout, "Kids")
+
+    # count
+
+
+    for c in count:
+        tot = 0.
+        p = 0.
+        for x in c:
+            if x[0] == "(":
+                p += c[x]
+            tot += c[x]
+
+        print p/tot
+
+
 
     CE =  ["([])", "[()]"]
     n_CE = []
     n_tot = []
+    which = {}
     for part in count:
         n_CE_i = 0.
         tot_i = 0.
         for resp in part:
             n_resp = part[resp]
+            if resp not in which:
+                which[resp] = 0
+            which[resp] += n_resp
 
             r= "".join(list(resp))
 
@@ -166,3 +187,7 @@ if __name__ == "__main__":
         n_tot.append(tot_i)
 
     print n_CE,n_tot, sum(n_CE)/sum(n_tot)
+    print sorted(map(lambda tup:tup[0]/float(tup[1]), zip(n_CE, n_tot)))
+
+    for r in which:
+        print r, which[r]/sum(n_tot)

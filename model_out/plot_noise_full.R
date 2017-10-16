@@ -7,7 +7,7 @@ library(dplyr)
 
 file <- "noise_full.csv"
 data = read.csv(file)
-data$who = factor(data$who,levels(data$who)[c(3,1,2)])
+#data$who = factor(data$who,levels(data$who)[c(3,1,2)])
 
 #m = melt(data, id=c("who", "mean"))
 
@@ -17,7 +17,7 @@ paper_theme <- theme(#legend.title=element_text( size = 14, face="plain"),
                      #legend.text=element_blank(),
 
                      axis.title.x = element_text(size=0),
-                     axis.text.x=element_text(colour="black", size = 14), 
+                     axis.text.x=element_text(colour="black", size = 12), 
                      axis.title.y = element_text(size = 14, vjust = 1),
                      axis.text.y  = element_text(size = 12),
                      panel.grid.major = element_blank(), 
@@ -29,6 +29,11 @@ paper_theme <- theme(#legend.title=element_text( size = 14, face="plain"),
 #x <- seq(0,0.1,length=100)
 #db <- dbeta(x, 1, 9)
 #dfbeta <- as.data.frame(cbind(x,db))
+take_after <- 0
+
+data <- data %>%
+           filter(sample > take_after)
+
 N <- length(data$who)
 N
 db <- rbeta(N, 1,9)
@@ -49,8 +54,11 @@ length(which(dfbeta$value < 0.05))
 data <- data %>%
 		mutate(who=as.factor(gsub("monkeys","Monkeys",as.character(who)))) %>%
 		mutate(who=as.factor(gsub("tsimane","Tsimane",as.character(who)))) %>%
-		mutate(who=as.factor(gsub("kids","US Kids",as.character(who))))
-data$who = factor(data$who,levels(data$who)[c(2,3,1)])
+		mutate(who=as.factor(gsub("kids","US Kids",as.character(who)))) %>%
+		mutate(who=as.factor(gsub("adults","US Adults",as.character(who))))
+
+#data$who = factor(data$who,levels(data$who)[c(2,3,1)])
+data$who = factor(data$who,levels(data$who)[c(1,4,2,3)])
 data$who <- as.factor(data$who)
 head(data)
 
@@ -91,9 +99,9 @@ ggsave("noise_histogram.png", width=8,height=4)
 
 data <- data %>%
 		group_by(who) %>% 
-		mutate(ci_95=quantile(value,.83)) %>%
-		mutate(ci_5=quantile(value,.17)) %>%
-		mutate(av=mean(value)) %>%
+		mutate(ci_95=quantile(value,.95)) %>%
+		mutate(ci_5=quantile(value,.05)) %>%
+		mutate(av=median(value)) %>%
 		top_n(n=1,wt=sample)
  
 
@@ -101,19 +109,51 @@ data <- data %>%
  head(data)
 
 p.1 <- ggplot(data, aes(x=who,y=av)) +
-		geom_point(size=1.5,shape=4) +
-		#geom_bar(position='dodge', stat='identity') +
+		#geom_point(size=1.5,shape=4) +
+		geom_bar(position='dodge', stat='identity') +
 
 		#geom_point(size=3.0) +
 		geom_errorbar(aes(ymin=ci_5, 
-			ymax=ci_95), width=0.05)
+			ymax=ci_95), width=0.45)
 
 
 p.1 <- p.1 + paper_theme + 
 			ylab(expression("Noise ("*eta*")")) +
  			scale_y_continuous(expand = c(0,0)) +
-			coord_cartesian(ylim = c(0, 0.1))#+ ylim(0,0.1)
+			coord_cartesian(ylim = c(0, 0.125))#+ ylim(0,0.1)
 			 #paste("(",paste(expression(eta),")", sep=""), sep=""))) #+
 			# ggtitle("Noise")
 
 ggsave("noise.png", width=4, height=4)
+
+###############################################################
+
+error_f <- function (val) {
+	return (1.-(1. - val)**4)
+}
+
+data.err <- data %>%	
+		group_by(who) %>%
+		mutate(ci_95 = error_f(ci_95)) %>%
+		mutate(av = error_f(av)) %>%
+		mutate(ci_5 = error_f(ci_5))
+
+
+head(data.err)
+p.1 <- ggplot(data.err, aes(x=who,y=av)) +
+		#geom_point(size=1.5,shape=4) +
+		geom_bar(position='dodge', stat='identity') +
+
+		#geom_point(size=3.0) +
+		geom_errorbar(aes(ymin=ci_5, 
+			ymax=ci_95), width=0.45) 
+		#geom_point(data=data, aes(x=who, y=av))
+
+
+p.1 <- p.1 + paper_theme + 
+			ylab(expression("p(error)")) +
+			ylim(0,0.5) #+
+ 			#scale_y_continuous(expand = c(0,0)) +
+			#coord_cartesian(ylim = c(0, 0.125))#+ 
+
+ggsave("error.png", width=4,height=4)

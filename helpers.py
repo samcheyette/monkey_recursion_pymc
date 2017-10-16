@@ -6,6 +6,8 @@ import theano.tensor as tt
 from clean_steves_data import *
 import re
 import editdistance
+from math import log, exp
+import math
 
 matching_set = [('(', ')'), ('[', ']')]
 open_set = ["(", "["]
@@ -167,17 +169,22 @@ def lst_format_data(paren_lst,  *args):
 
 
 
-def format_algs(paren_lst, algs, sm=1e-2):
+def format_algs(paren_lst, algs, sm=1e-2, pref=0.5):
     out = []
     for which in algs:
         alg =algs[which]
         resp = [0.0 for _ in xrange(len(paren_lst))]
         for i in xrange(len(paren_lst)):
             for alg_paren in alg:
+                bias_start = (alg_paren[0] == "(")
+                bias = bias_start * pref + (1 - bias_start) * (1 - pref)
+                #hd = editdistance.eval(alg_paren, paren_lst[i])
+                hd = hamming_distance(alg_paren, paren_lst[i]) 
+                add = sm ** hd
+                if  sm > 0:
+                    add = sm ** (hd + log(bias, sm))
 
-                hd = editdistance.eval(alg_paren, paren_lst[i])
-                #hd = hamming_distance(alg_paren, paren_lst[i])
-                resp[i] += sm ** hd
+                resp[i] +=  add
                 #if (resp[i] == None or 
                    # (resp[i] < 0.2**hd)):
                     #resp[i] = 0.2**hd
@@ -336,6 +343,7 @@ def output_thetas(names, part_alg, part_sds, order,
 def output_full_alpha_noise(trace, which, names,thin, out):
     o = "sample,thin_sample,who,value\n"
     for m in xrange(len(trace)):
+
         assert(len(trace[m][which]) == len(names))
         for n in xrange(len(trace[m][which])):
             trial = m*thin
@@ -350,8 +358,9 @@ def output_full_alpha_noise(trace, which, names,thin, out):
 
 def output_full_theta_beta(trace, which, groups,names,thin, out):
     o = "sample,thin_sample,who,part,which,value\n"
-    for m1 in xrange(len(trace)):
-        trial = m1 * thin
+    for m1 in xrange(0,len(trace), thin):
+        trial = m1
+        #trial = m1 * thin
         assert(len(trace[m1][which]) == len(groups))
         for m2 in xrange(len(trace[m1][which])):
             group = groups[m2]
@@ -392,8 +401,8 @@ def store_hds(paren_lst, algs):
         for i in xrange(len(paren_lst)):
             hds = []
             for alg_paren in alg:
-                #hd = hamming_distance(alg_paren, paren_lst[i])
-                hd = editdistance.eval(alg_paren, paren_lst[i])
+                hd = hamming_distance(alg_paren, paren_lst[i])
+                #hd = editdistance.eval(alg_paren, paren_lst[i])
                 hds.append(hd)
             #hds = np.array(hds)
             #hds_t = tt.as_tensor(hds)
@@ -403,16 +412,18 @@ def store_hds(paren_lst, algs):
 
     return out
 
-def format_algs_theano(hds, sm):
 
-    #out = tt.as_tensor(np.array(out))
+
+def format_algs_theano(hds, sm, bias = None):
+
     ps = [tt.pow(sm, o).sum(axis=1) for o in hds]
-
+   # ps = tt.pow(sm,hds)
     out = [p * (1.0/p.sum()) for p in ps]
     out_tens = tt.stack(out)
 
     return out_tens
 
+    #return ps
 
 
         
@@ -431,18 +442,63 @@ def get_hyps_gen_noise_N(hyps,mem_noise):
 
 
 
+
+def store_start_p(paren_lst, n=1, lst = ["(", ")"]):
+    out = []
+    for which in paren_lst:
+        if which[0] in lst:
+            out.append(1)
+        else:
+            out.append(0)
+    ret = np.array(out * n)
+    ret = ret.reshape((n, len(paren_lst)))
+    return ret
+
+
+
 #def get_distribution_parens(parts)
 
 if __name__ == "__main__":
+
+    hyps = ["OOMM","OOCC", "OMOM"]
     paren_lst = make_lists()
-    prims=["(", "[", "]", ")",'O','C','M']
-    hyps = make_lists(prims)
+    gen = get_hyps_gen(hyps)
+
+    #algorithms = format_algs(paren_lst,gen, sm=0.0)
+    alg_0 = get_0_columns(format_algs(paren_lst,gen, sm=0.0))
+    paren_lst = np.delete(np.array(paren_lst), list(alg_0))
+    algorithms = format_algs(paren_lst,gen,sm=0.1,pref=0.5)
+
+    print paren_lst
+    #print algorithms
+
+    bias = np.array([0.7,0.7]).reshape((2,1))
+    start_p = store_start_p(paren_lst, n=2)
+    start_np = 1 - start_p
+    #print start_p
+    #print start_np
+    theta_resp = np.array([[0.01,0.455,0.01,0.01,0.01,0.455],
+                         np.ones(len(paren_lst))*1/float(len(paren_lst))])
+    #start_p_2 = np.ones((2, len(paren_lst))) * 0.25
+    print start_p * bias
+    biased_resps = start_p * bias * theta_resp 
+    biased_resps += start_np * (1-bias) * theta_resp
+    sum_norm = np.sum(biased_resps,axis=1).reshape((len(theta_resp),1)) 
+    biased_resps = biased_resps / sum_norm
+    print biased_resps
+
+    ############################################################
+
+    paren_lst = make_lists()
+    #prims=["(", "[", "]", ")",'O','C','M']
+    #hyps = make_lists(prims)
     gen = get_hyps_gen(hyps)
 
     filt = filter_hyps(copy.deepcopy(gen),
                          thresh=0.5, rem_dup=False)
     alg_names = [x for x in filt]
     alg_types = get_algs_of_type(filt)
+
 
     ############################################################
     careAbout = "Order pressed"
@@ -477,35 +533,52 @@ if __name__ == "__main__":
 
 
     alg_0 = get_0_columns(format_algs(paren_lst,filt, sm=0.0))
-    dat_0 = get_0_columns(data)
-    both_0 = list(alg_0.intersection(dat_0))
-    paren_lst = np.delete(np.array(paren_lst), both_0)
+    #dat_0 = get_0_columns(data)
+    #both_0 = list(alg_0.intersection(dat_0))
+    paren_lst = np.delete(np.array(paren_lst), list(alg_0))
 
 
 
 
-    sm = tt.as_tensor(np.array([2.0]))
-    algorithms = format_algs(paren_lst,filt, sm=2.0)
+    sm = tt.as_tensor(np.array([0.1]))
+    algorithms = format_algs(paren_lst,filt, sm=0.1)
 
-    hds = store_hds(paren_lst, filt)
-    algorithms1 = format_algs_theano(hds, sm)
-    algorithms2 = format_algs_theano(hds, sm)
+    #hds = store_hds(paren_lst, filt)
+    #algorithms1 = format_algs_theano(hds, sm)
+    #algorithms2 = format_algs_theano(hds, sm)
+    #print type(algorithms1)
+    #print algorithms1.eval()
 
-    x1 = tt.as_tensor(np.ones((2, len(algorithms[0]))))
-    x2 = tt.as_tensor(np.ones((3, len(algorithms[0]))))
+    print len(algorithms[0])
+
+    x1 = [tt.as_tensor(np.ones(2)) for _ in xrange(2)]
+    x2 = [tt.as_tensor(np.ones(2)) for _ in xrange(3)]
+
+   # x1 = tt.as_tensor(np.ones((2, 3)))
+    #x2 = tt.as_tensor(np.ones((3, 3)))
+    z = tt.concatenate([x1, x2], axis=0)
+    print z.eval()
+    assert(False)
 
     m1 = x1.dot(algorithms1)
     m2 = x2.dot(algorithms2)
 
     lst = []
-    for i in xrange(2):
-        lst.append(x1[i])
-    for i in xrange(3):
-        lst.append(x2[i])
+    #for i in xrange(2):
+     #   lst.append(x1[i])
+    #for i in xrange(3):
+       # lst.append(x2[i])
 
     print x1.shape.eval(), x2.shape.eval()
     print m1.shape.eval(), m2.shape.eval()
 
     algs = tt.stacklists(lst)
 
-    print algs.shape.eval()
+    #print algs.shape.eval()
+    #print algs.eval()
+    x = tt.matrix(np.array([1,2]))
+    y = tt.matrix(np.array([2,3]))
+    z = tt.stack([x, y], axis=2)
+
+   #f = theano.function([x, y], z)
+    #print f([[1, 2, 3]], [[4, 5, 6]])

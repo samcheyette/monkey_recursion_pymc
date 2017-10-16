@@ -7,7 +7,7 @@ library(dplyr)
 
 file <- "alpha_full.csv"
 data = read.csv(file)
-data$who = factor(data$who,levels(data$who)[c(3,1,2)])
+#data$who = factor(data$who,levels(data$who)[c(3,1,2)])
 
 #m = melt(data, id=c("who", "mean"))
 
@@ -17,7 +17,7 @@ paper_theme <- theme(#legend.title=element_text( size = 14, face="plain"),
                      #legend.text=element_blank(),
 
                      axis.title.x = element_text(size=0),
-                     axis.text.x=element_text(colour="black", size = 14), 
+                     axis.text.x=element_text(colour="black", size = 12), 
                      axis.title.y = element_text(size = 14, vjust = 1),
                      axis.text.y  = element_text(size = 12),
                      panel.grid.major = element_blank(), 
@@ -30,8 +30,10 @@ paper_theme <- theme(#legend.title=element_text( size = 14, face="plain"),
 data <- data %>%
 		mutate(who=as.factor(gsub("monkeys","Monkeys",as.character(who)))) %>%
 		mutate(who=as.factor(gsub("tsimane","Tsimane",as.character(who)))) %>%
-		mutate(who=as.factor(gsub("kids","US Kids",as.character(who))))
-data$who = factor(data$who,levels(data$who)[c(2,3,1)])
+		mutate(who=as.factor(gsub("kids","US Kids",as.character(who))))%>%
+              mutate(who=as.factor(gsub("adults","US Adults",as.character(who))))
+data$who = factor(data$who,levels(data$who)[c(1,4,2,3)])
+#data$who = factor(data$who,levels(data$who)[c(2,3,1)])
 
 
 
@@ -68,8 +70,8 @@ p.1 <- ggplot(data, aes(x=who,y=av)) +
 
 p.1 <- p.1 + paper_theme + 
                      ylab(expression("Clustering ("*alpha*")")) +
-                     scale_y_continuous(expand = c(0,0))+ #+
-                     coord_cartesian(ylim = c(5, 15))#+ ylim(0,0.1)
+                     scale_y_continuous(expand = c(0,0))#+ #+
+                     #coord_cartesian(ylim = c(5, 15))#+ ylim(0,0.1)
                       #paste("(",paste(expression(eta),")", sep=""), sep=""))) #+
                      # ggtitle("Noise")
 
