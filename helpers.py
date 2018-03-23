@@ -178,11 +178,11 @@ def format_algs(paren_lst, algs, sm=1e-2, pref=0.5):
             for alg_paren in alg:
                 bias_start = (alg_paren[0] == "(")
                 bias = bias_start * pref + (1 - bias_start) * (1 - pref)
-                #hd = editdistance.eval(alg_paren, paren_lst[i])
-                hd = hamming_distance(alg_paren, paren_lst[i]) 
+                hd = editdistance.eval(alg_paren, paren_lst[i])
+                #hd = hamming_distance(alg_paren, paren_lst[i]) 
                 add = sm ** hd
                 if  sm > 0:
-                    add = sm ** (hd + log(bias, sm))
+                    add = sm ** hd #+ log(bias, sm)
 
                 resp[i] +=  add
                 #if (resp[i] == None or 
@@ -340,36 +340,48 @@ def output_thetas(names, part_alg, part_sds, order,
     f.write(o)
     f.close()
 
-def output_full_alpha_noise(trace, which, names,thin, out):
-    o = "sample,thin_sample,who,value\n"
+def output_full_alpha_noise(trace, which, names,added=[],thin=1, out="noise_full.csv"):
+    o = "sample,thin_sample,who,part,digits,value\n"
+    noise_sum = [0.0 for _ in xrange(len(trace[0][which]))]
     for m in xrange(len(trace)):
 
         assert(len(trace[m][which]) == len(names))
         for n in xrange(len(trace[m][which])):
+            noise_sum[n] += trace[m][which][n]/float(len(trace))
             trial = m*thin
             name = names[n]
             val = trace[m][which][n]
-            o += ("%d,%d,%s,%f\n" % (m, trial, name, val))
+            forward_dig="None"
+            if len(added) > 0:
+                forward_dig = added[n]
+            o += ("%d,%d,%s,%d,%s,%f\n" % (m, trial, name, n,forward_dig, val))
 
     f = open(out, "w+")
     f.write(o)
     f.close()
+    return noise_sum
 
 
-def output_full_theta_beta(trace, which, groups,names,thin, out):
-    o = "sample,thin_sample,who,part,which,value\n"
+def output_full_theta_beta(trace, which, groups,names,thin, out, added=[]):
+    o = "sample,thin_sample,who,part,which,forward,value\n"
     for m1 in xrange(0,len(trace), thin):
         trial = m1
+
         #trial = m1 * thin
         assert(len(trace[m1][which]) == len(groups))
         for m2 in xrange(len(trace[m1][which])):
             group = groups[m2]
+            forward =  "None"
+            if len(added) > 0:
+                forward = str(added[m2])
             assert(len(trace[m1][which][m2]) == len(names))
             for n in xrange(len(trace[m1][which][m2])):
+
                 name = names[n]
                 val = trace[m1][which][m2][n]
 
-                o += ("%d,%d,%s,%d,%s,%f\n" % (m1, trial, str(group), m2, str(name), val))
+                o += ("%d,%d,%s,%d,%s,%s,%f\n" % (m1, trial, str(group), 
+                                                m2, str(name),forward, val))
 
     f = open(out, "w+")
     f.write(o)
@@ -392,7 +404,8 @@ def get_0_columns(arr):
     return column_0s
 
 
-def store_hds(paren_lst, algs):
+
+def store_hds_old(paren_lst, algs):
     out = []
     for which in algs:
         alg =algs[which]
@@ -401,8 +414,8 @@ def store_hds(paren_lst, algs):
         for i in xrange(len(paren_lst)):
             hds = []
             for alg_paren in alg:
-                hd = hamming_distance(alg_paren, paren_lst[i])
-                #hd = editdistance.eval(alg_paren, paren_lst[i])
+                #hd = hamming_distance(alg_paren, paren_lst[i])
+                hd = editdistance.eval(alg_paren, paren_lst[i])
                 hds.append(hd)
             #hds = np.array(hds)
             #hds_t = tt.as_tensor(hds)
@@ -414,20 +427,77 @@ def store_hds(paren_lst, algs):
 
 
 
-def format_algs_theano(hds, sm, bias = None):
+def store_hds(paren_lst, algs):
+    out = []
+    size = []
+    max_hd = 0
+    for which in algs:
+        alg =algs[which]
+        hds_list = []
+
+        for i in xrange(len(paren_lst)):
+            hds = []
+            for alg_paren in alg:
+                #hd = hamming_distance(alg_paren, paren_lst[i])
+                hd = editdistance.eval(alg_paren, paren_lst[i])
+                hds.append(hd)                
+            #hds = np.array(hds)
+            #hds_t = tt.as_tensor(hds)
+            hds_list.append(copy.deepcopy(hds))
+        if len(hds_list[0]) > max_hd:
+            max_hd = len(hds_list[0])
+        out.append(copy.deepcopy(hds_list))
+
+    ret = []
+    for o in out:
+        tmp = []
+        for z in o:
+            new_z = copy.deepcopy(z)
+            if len(z) != max_hd:
+                for _ in xrange(max_hd - len(z)):
+                    new_z.append(0)
+            tmp.append(copy.deepcopy(new_z))
+        ret.append((copy.deepcopy(tmp)))
+
+    return np.array(ret), max_hd
+
+
+
+
+def format_algs_theano(hds, sm):
+
+
+    #ps = tt.pow(sm,hds[0]) + tt.pow(sm,hds[1]) + tt.pow(sm,hds[2]) + tt.pow(sm,hds[3])
+    #ps = tt.sum(ps,axis=1)
 
     ps = [tt.pow(sm, o).sum(axis=1) for o in hds]
-   # ps = tt.pow(sm,hds)
-    out = [p * (1.0/p.sum()) for p in ps]
-    out_tens = tt.stack(out)
+    #out = [p * (1.0/p.sum()) for p in ps]
+   # out_tens = tt.stack(out)
+    #return out_tens
 
-    return out_tens
+    return ps
+    #return tt.stack(ps)
 
-    #return ps
 
 
         
 
+def format_algs_theano_bypart(hds, sms, total_parts=46,n_algs=9, max_hd=4):
+    x = tt.dtensor3('x')
+    y=tt.dtensor3('y')
+
+    ass = np.array([i/(65 * 4 * 9) for i in xrange(9 * 65 * 4 * 46)])
+   # for i in xrange(46):
+      #  print i, list(ass).count(i)
+
+    sms = sms[ass].reshape((46, 9,65,4))
+
+
+    x = tt.pow(sms, hds)
+
+    x = tt.sum(x, axis=3)
+
+    return x
 
 def get_hyps_gen_noise_N(hyps,mem_noise):
     r_dct = {}
@@ -459,7 +529,40 @@ def store_start_p(paren_lst, n=1, lst = ["(", ")"]):
 #def get_distribution_parens(parts)
 
 if __name__ == "__main__":
+    hds = [[[3,3,3,3],[3,3,3,3],[1,1,1,1]],[[3,3,3,3],[3,3,3,3],[1,1,1,1]]]
+    sms = tt.as_tensor([1,0.2])
+    ass = np.array([x/(4 * 3) for x in xrange(4 * 3 * 2)])
+    print ass
+    sms = sms[np.array(ass)].reshape((2,3,4))
+    #sms = tt.tile(sms,(2,4))
+    #sms = tt.tile(sms, (2,3))
+    print sms.shape.eval()
+    print sms.eval()
+    #sms = tt.addbroadcast(sms, 1)
+    x = tt.pow(sms, hds)
+    #print x.shape.eval()
+    print x.eval()
 
+    assert(False)
+
+
+
+
+    x = tt.dtensor3('x')
+    y=tt.dtensor3('y')
+
+    z1 = np.ones((2,4))
+    z2 = np.ones((3,4))
+
+    linexp = T.function([x,y], tt.pow(y,x))
+
+    pows = linexp([[[3,3,3,3],[3,3,3,3],[1,1,1,1]],[[3,3,3,3],[3,3,3,3],[1,1,1,1]]],
+                  [0.5*z2, 0.25*z2])
+
+    print pows.shape
+    print tt.sum(pows, axis = 1)
+    #print linexp([[1,2,3]])
+    assert(False)
     hyps = ["OOMM","OOCC", "OMOM"]
     paren_lst = make_lists()
     gen = get_hyps_gen(hyps)
@@ -469,7 +572,14 @@ if __name__ == "__main__":
     paren_lst = np.delete(np.array(paren_lst), list(alg_0))
     algorithms = format_algs(paren_lst,gen,sm=0.1,pref=0.5)
 
-    print paren_lst
+    hds = store_hds(paren_lst, gen)
+    print len(paren_lst), len(algorithms)
+    print hds
+    #print size
+   # x = tt.dtensor3('x')
+    #y=tt.dtensor3('y')
+
+    assert(False)
     #print algorithms
 
     bias = np.array([0.7,0.7]).reshape((2,1))

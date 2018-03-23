@@ -7,6 +7,8 @@ library(dplyr)
 
 file <- "noise_full.csv"
 data = read.csv(file)
+data$ID <- seq.int(nrow(data))
+
 #data$who = factor(data$who,levels(data$who)[c(3,1,2)])
 
 #m = melt(data, id=c("who", "mean"))
@@ -29,6 +31,50 @@ paper_theme <- theme(#legend.title=element_text( size = 14, face="plain"),
 #x <- seq(0,0.1,length=100)
 #db <- dbeta(x, 1, 9)
 #dfbeta <- as.data.frame(cbind(x,db))
+
+
+#head(data)
+#max(data$ID)
+
+
+x <- data %>%
+	group_by(sample) %>%
+	top_n(1,wt=ID) %>%
+	ungroup %>%
+	top_n(1,wt=-ID)
+
+d.mod <- x$ID
+
+d.mod
+
+
+m.0 <- data %>%
+		group_by(sample) %>%
+		mutate(ID = ID %%d.mod) %>%
+		mutate(err=1-(1-value)**4)  %>%
+		group_by(ID) %>%
+		mutate(mean_val=mean(value)) %>%
+		mutate(CI_95_val=quantile(value,.95)) %>%
+		mutate(CI_5_val=quantile(value,.5)) %>%
+		mutate(mean_err=mean(err)) %>%
+		mutate(CI_95_err=quantile(err,.95)) %>%
+		mutate(CI_5_err=quantile(err,.5)) %>%
+		top_n(n=1,wt=sample)
+
+p.1 <- ggplot(data=m.0, aes(x=who, y=value)) + 
+		geom_jitter(width=0.2,height=0.0)  +
+		geom_errorbar(aes(ymin=CI_5_err, ymax=CI_95_err))
+		
+
+head(m.0)
+
+p.1 <- p.1 +paper_theme
+
+ggsave("noise_by_part.png", width=6,height=6)
+
+
+
+
 take_after <- 0
 
 data <- data %>%
@@ -156,4 +202,4 @@ p.1 <- p.1 + paper_theme +
  			#scale_y_continuous(expand = c(0,0)) +
 			#coord_cartesian(ylim = c(0, 0.125))#+ 
 
-ggsave("error.png", width=4,height=4)
+ggsave("error.pdf", width=4,height=4)

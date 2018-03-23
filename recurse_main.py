@@ -2,21 +2,22 @@ import pymc3 as pm
 from helpers import *
 import matplotlib.pyplot as plt
 import seaborn as sns
+#from pymc3.backends import Text
 
 
 
 
 def model():
     global data
-    alpha_prior = 1.
-    beta_prior = 1.
+    alpha_prior = 10.
+    beta_prior = 0.1
     alpha_init = np.ones((N_GROUPS,1))
     noise_init = np.ones((N_GROUPS,1))*1e-2
 
     parts_ones = np.ones((TOTAL_PARTS))
     data_ones = np.ones(len(data[0]))
 
-    hds = store_hds(paren_lst, filt)
+    hds = store_hds_old(paren_lst,filt)
     ns = np.sum(data, axis=1)
 
 
@@ -38,9 +39,10 @@ def model():
     with pm.Model() as m:
         alpha = pm.Exponential('alpha', alpha_prior,
                  shape=(N_GROUPS,1))
+ 
+        alpha = np.ones((N_GROUPS, 1)) * 10.
 
 
-        #alpha = np.ones((N_GROUPS, 1)) * 5.
         beta = pm.Dirichlet('beta', np.ones((N_GROUPS, N_ALGS))*beta_prior,
                         # testval=np.ones(N_ALGS),
                             shape=(N_GROUPS,N_ALGS)) 
@@ -51,8 +53,34 @@ def model():
                            shape=(TOTAL_PARTS,N_ALGS)) 
 
 
+        #noise_pr_a = pm.Exponential('n_pr_a', 1.,shape=N_GROUPS)
+        #noise_pr_b = pm.Exponential('n_pr_b', 1.,shape=N_GROUPS)
+
+        #noise_pr_a = np.ones(N_GROUPS) * 10.
+        #noise_pr_b = np.ones(N_GROUPS) * 10.
+
+
+        noise = pm.Beta("noise", 1,2, shape=TOTAL_PARTS, testval=0.1)
+        #noise = pm.Beta("noise", noise_pr_a[assignments],noise_pr_b[assignments], 
+                    #    shape=TOTAL_PARTS)
+
+
+       # noise = pm.Beta("noise", 1,1, shape=N_GROUPS, testval=0.1)
+
+
+
+
+        new_algs = map(lambda x: theta[x].dot(format_algs_theano(hds, noise[x])), np.arange(TOTAL_PARTS))
+        theta_resp = tt.concatenate([new_algs], axis=0)
+        #theta_resp = theta.dot(algorithms)
+
+        """
         noise = pm.Beta("noise", 1,9, shape=N_GROUPS, testval=0.1)
-        #noise_alg = algorithms + noise[assignments]
+        noise_alg = algorithms + noise[assignments]
+        new_algs = format_algs_theano_bypart(hds, noise, 
+                                    total_parts=TOTAL_PARTS, 
+                                   n_algs=N_ALGS,max_hd=max_hd)
+        theta_resp = theta.dot(new_algs)
 
         #theta_resp = theta.dot(algorithms) 
         monkey_theta = theta[m_ass]
@@ -74,22 +102,27 @@ def model():
 
         theta_resp = tt.concatenate([monkey_algs, kid_algs,
                  tsim_algs, adult_algs], axis=0)
-
-        bias = pm.Beta("bias", 2,2,shape=(TOTAL_PARTS,1))
+        """
+        bias = pm.Beta("bias", 1,1,shape=(TOTAL_PARTS,1))
 
         biased_theta_resps = start_p * bias * theta_resp + start_np * (1.-bias) * theta_resp
         sum_norm = biased_theta_resps.sum(axis=1).reshape((TOTAL_PARTS,1))
         biased_theta_resps = biased_theta_resps / sum_norm
+
+        #biased_theta_resps = theta_resp
+
         pm.Multinomial('resp', n=ns, p = biased_theta_resps, 
                shape=(TOTAL_PARTS, N_RESPS), observed=data)
 
-    
-        #step = pm.Metropolis()
+        #db = Text('trace')
+
         trace = pm.sample(MCMC_STEPS,
             tune=BURNIN,target_accept=0.9, thin=MCMC_THIN)
         print_star("Model Finished!")
 
 
+    if MCMC_CHAINS > 1:
+        print pm.gelman_rubin(trace)
 
     summary = pm.df_summary(trace)
     which = 45
@@ -109,10 +142,10 @@ if __name__ == "__main__":
     #make parentheses lists, 
     #and hypotheses (e.g. OOMC)
 
-    MCMC_STEPS = 10000
+    MCMC_STEPS = 250
     MCMC_THIN = 10
     MCMC_CHAINS=1
-    BURNIN = 500
+    BURNIN = 25
     paren_lst = make_lists()
     hyps = make_lists(prims=["O","M", "C"])
     gen = get_hyps_gen(hyps)
@@ -128,28 +161,34 @@ if __name__ == "__main__":
 
     ##extract data from files
     careAbout = "Order pressed"
+    
+
     monkey_data = getCountData("stevesdata/RecursionMonkey.csv", 
 
                                 careAbout, "Monkeys",
                                 subset={"Exposure": "2"})
-
-    kids_data = getCountData("stevesdata/RecursionKids.csv", 
+    kids_data = getCountData("stevesdata/RecursionKids_MoreSubs.csv", 
                                 careAbout, "Kids")
+
+
+    kid_dig = getCountData("stevesdata/RecursionKids_MoreSubs.csv", 
+                                "FORWARDS DIGITS", "Kids")
     adults_data = getCountData("stevesdata/RecursionAdults.csv", 
                                 careAbout, "Adults")
     tsimane_data = getCountData("stevesdata/RecursionTsimane.csv", 
                                 careAbout, "Tsimane")
-
-    #################################################
+        #################################################
 
     data_assignments = lst_format_data(paren_lst,
                  monkey_data,
-                     kids_data, 
+                    kids_data, 
                      tsimane_data,adults_data)
+
+
 
     data = data_assignments[0]
     assignments = data_assignments[1]
-
+    #groups = ["kids"]
 
     groups = ["monkeys", "kids","tsimane","adults"]
     alg_0 = get_0_columns(format_algs(paren_lst,filt, sm=0.0))
@@ -159,16 +198,28 @@ if __name__ == "__main__":
 
     paren_lst = np.delete(np.array(paren_lst), both_0)
     algorithms = format_algs(paren_lst,filt, sm=0.1)
-    for a in xrange(len(algorithms)):
-        print alg_names[a]
+
 
     #data = np.delete(data, both_0, axis=1)
+
+
     data_assignments = lst_format_data(paren_lst,
                  monkey_data,
                      kids_data, 
                      tsimane_data,adults_data)
+
     data = data_assignments[0]
     assignments = data_assignments[1]
+    ce_paren = [list(paren_lst).index("([])"), list(paren_lst).index("[()]")]
+    ce_prob = []
+    for d in data:
+        ce_prob.append((d[ce_paren[0]] + d[ce_paren[1]])/float(sum(d)))
+
+    #data_assignments = lst_format_data(paren_lst,
+                   #  kids_data)
+
+
+    print data
     #algorithms = np.delete(algorithms, both_0, axis=1)
     #algorithms =  algorithms/algorithms.sum(axis=1)[:,None]
 
@@ -194,26 +245,21 @@ if __name__ == "__main__":
     trace, model_out = model()
 
 
-
     means= model_out['mean']
     sds = model_out['sd']
 
     ###################################################
 
-    output_full_alpha_noise(trace, 'noise',  
-        names=groups, thin=MCMC_THIN, out="model_out/noise_full.csv")
-    output_full_alpha_noise(trace, 'alpha',  
-        names=groups, thin=MCMC_THIN, out="model_out/alpha_full.csv")
-    output_full_theta_beta(trace, 'beta',  groups=groups,
-        names=alg_names, thin=MCMC_THIN, out="model_out/beta_full.csv")
 
-    output_full_theta_beta(trace, 'theta', groups=np.array(groups)[assignments],
-        names=alg_names, thin=MCMC_THIN, out="model_out/theta_full.csv")
+
+
     grouped = group_vars(means, ["alpha", "beta", "theta", "noise"])
     alpha = grouped["alpha"]
     beta = grouped["beta"]
     theta = grouped["theta"]
     noise = grouped["noise"]
+    print noise
+
 
     grouped_sds = group_vars(sds, ["alpha", "beta", "theta", "noise"])
     alpha_sd = grouped_sds["alpha"]
@@ -233,7 +279,18 @@ if __name__ == "__main__":
     theta_names = np.array(theta[0]).reshape(TOTAL_PARTS, N_ALGS)
     theta_vals = np.array(theta[1]).reshape(TOTAL_PARTS, N_ALGS)
     theta_sds = np.array(theta_sd[1]).reshape(TOTAL_PARTS, N_ALGS)
-        
+
+
+    noise = output_full_alpha_noise(trace, 'noise',  
+        names=np.array(groups)[assignments],  thin=MCMC_THIN, 
+        out="model_out/noise_full.csv")
+    output_full_alpha_noise(trace, 'alpha',  
+        names=groups, thin=MCMC_THIN, out="model_out/alpha_full.csv")
+    output_full_theta_beta(trace, 'beta',  groups=groups,
+        names=alg_names, thin=MCMC_THIN, out="model_out/beta_full.csv")
+    output_full_theta_beta(trace, 'theta', groups=np.array(groups)[assignments],
+        names=alg_names, thin=MCMC_THIN, out="model_out/theta_full.csv", added=noise) 
+
     output_alphas(groups, alpha_vals, alpha_sds, "model_out/alphas.csv")
     output_alphas(groups, noise_vals, noise_sds, "model_out/noise.csv")   
   

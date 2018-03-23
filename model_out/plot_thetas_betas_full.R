@@ -146,14 +146,100 @@ p.1 <- p.1 + paper_theme +
             scale_color_manual(values=c("#b30000","black"),
           labels=my.labs)
 
-ggsave("thetas_betas.png", width=8,height=4)
+ggsave("thetas_betas.pdf", width=8,height=4)
 
 
 
 ####################################################################
+if (FALSE) {
+
+m.rec.thetas <- data_theta %>%
+        filter(sample > take_after) %>%
+        select(-one_of("thin_sample")) %>%
+
+         filter(which %in% c("[()]", "([])", "OOMM", "OOMC", "[OMM", "(OMM" ,
+                        "[(MM", "[(MM", "([]M", "[()M", "([]C", "[()C",
+                            "OOCC", "OOCM","([)]", "[(])", "(OCC", "[OCC", 
+                        "(OCM", "[OCM", "([CC", "[(CC", "([CM", "[(CM")) %>%
+
+         group_by(sample, which, part) %>%
+         mutate(rec = 1.0 * which %in% c("[()]", "([])", "OOMM", "OOMC", "[OMM", "(OMM" ,
+                        "[(MM", "[(MM", "([]M", "[()M", "([]C", "[()C")) %>%
+         mutate(close=0.5 * which %in% c("OOCC", "OOCM","([)]", "[(])", "(OCC", "[OCC", 
+                        "(OCM", "[OCM", "([CC", "[(CC", "([CM", "[(CM")) %>%
+         mutate(prb=value*(rec + close)) %>%
+         group_by(sample,part) %>%
+         mutate(prb=sum(prb)) %>%
+         top_n(n=1,wt=ID) %>%
+         mutate(forward=(1-(1-forward)**4))
+ 
+
+        # top_n(n=1, wt=ID) 
+head(m.rec.thetas)
+
+m.rec.thetas.noise <- m.rec.thetas %>%
+        group_by(sample,which,part) %>%
+       # mutate(ID=ID) %>%
+        mutate(prb=  prb - forward * prb * as.numeric(grepl("Monk", who))) %>%
+        mutate(prb= prb - forward * prb * as.numeric(grepl("Kid", who))) %>%
+        mutate(prb= prb - forward * prb* as.numeric(grepl("Tsim", as.character(who)))) %>%
+        mutate(prb= prb - forward * prb* as.numeric(grepl("Adu", as.character(who))))
 
 
+m.rec.thetas <- m.rec.thetas %>% mutate(noise="B")
+m.rec.thetas.noise <- m.rec.thetas.noise %>% mutate(noise="A")
+
+m.2 <- rbind(m.rec.thetas,m.rec.thetas.noise)
+head(m.2)
+
+m.2 <- m.2 %>%
+        group_by(part, noise) %>%
+        mutate(ci_95=quantile(prb,0.95)) %>%
+        mutate(ci_5=quantile(prb,0.05)) %>%
+        mutate(prb=median(prb)) %>%
+        #top_n(n=1,wt=sample) %>%
+
+        group_by(who, noise) %>%
+        mutate(ci_95=mean(ci_95)) %>%
+
+        mutate(ci_5=mean(ci_5)) %>%
+
+        mutate(prb=mean(prb)) %>%
+
+        #mutate(ci_95=mean(ci_95)) %>%
+        #mutate(ci_5=mean(ci_5)) %>%
+
+        top_n(n=1, wt=ID) %>% 
+         ungroup %>%
+        select(-one_of("sample"))  %>%
+        select(-one_of("rec")) %>%
+        select(-one_of("forward")) %>%
+
+        select(-one_of("close"))
+            #transform(who=factor(reorder(who, sum(prb))) )
+
+m.2$who = factor(m.2$who,levels(m.2$who)[c(1,4,2,3)])
+
+p.1 <- ggplot(data=m.2, aes(x=who, y=prb,group=noise, fill=noise)) +
+        geom_bar(stat='identity', position='dodge') +
+            geom_errorbar(aes(ymin=ci_5,ymax=ci_95, group=noise),
+                  position=position_dodge(width=0.9),  width=0.45, size=0.3) 
+
+
+p.1 <- p.1 +paper_theme + ylab("p(center-embedding)") +
+        #ylim(0,1)+
+       # scale_y_continuous(breaks=brk)+#,expand=c(0.0,0.0)) +
+        #scale_x_discrete(labels=lwho) + 
+         scale_fill_manual(values=c("#b30000","#87A485"),
+          labels=c("Noise", "No Noise")) +
+            theme(legend.position = c(0.2, 0.9)) 
+
+
+ggsave("thetas_recursive_no_noise.png",width=4,height=4)           
+head(m.2)
 print(1)
+}
+
 m.rec.thetas <- data_theta %>%
         filter(sample > take_after) %>%
         select(-one_of("thin_sample")) %>%
@@ -173,19 +259,14 @@ m.rec.thetas <- data_theta %>%
          mutate(prb=sum(prb)) %>%
          top_n(n=1,wt=ID) %>%
          group_by(who,sample) %>%
-         mutate(prb=median(prb)) %>%
+         mutate(prb=median(prb)+0.05) %>%
          top_n(n=1,wt=ID) %>%
-         #top_n(n=1, wt=ID) %>%
 
-         #top_n(n=1, wt=sample) %>%
          group_by(who) %>%
-         mutate(ci_95=quantile(prb,.9)) %>%
-         mutate(ci_5=quantile(prb,.1)) %>%
-         mutate(prb=median(prb)) %>%
-            #mutate(ci_95=mean(ci_95)) %>%
-           # mutate(ci_5=mean(ci_5)) %>%
+         mutate(ci_95=quantile(prb,.83)) %>%
+         mutate(ci_5=quantile(prb,.16)) %>%
+         mutate(prb=mean(prb)) %>%
 
-         #top_n(n=1, wt=ID) %>%
          top_n(n=1, wt=ID) %>%
 
          ungroup %>%
@@ -197,20 +278,20 @@ head(m.rec.thetas)
 
 
 m.rec.thetas.noise <- m.rec.thetas %>%
-        mutate(prb=  prb - 0.3 * prb * as.numeric(grepl("Monk", who))) %>%
-        mutate(prb= prb - 0.04 * prb * as.numeric(grepl("Kid", who))) %>%
-        mutate(prb= prb - 0.01 * prb* as.numeric(grepl("Tsim", as.character(who)))) %>%
-        mutate(prb= prb - 0.005 * prb* as.numeric(grepl("Tdu", as.character(who)))) %>%
+        mutate(prb=  prb - 0.35 * prb * as.numeric(grepl("Monk", who))) %>%
+        mutate(prb= prb - 0.1 * prb * as.numeric(grepl("Kid", who))) %>%
+        mutate(prb= prb - 0.025 * prb* as.numeric(grepl("Tsim", as.character(who)))) %>%
+        mutate(prb= prb - 0.01 * prb* as.numeric(grepl("Adu", as.character(who)))) %>%
        
-        mutate(ci_95=  ci_95 - 0.3 * ci_95 * as.numeric(grepl("Monk", who))) %>%
-        mutate(ci_95= ci_95 - 0.04 * ci_95 * as.numeric(grepl("Kid", who))) %>%
-        mutate(ci_95= ci_95 - 0.01 *ci_95 * as.numeric(grepl("Tsim", as.character(who)))) %>%
-        mutate(ci_95= ci_95 - 0.005 * ci_5* as.numeric(grepl("Adu", as.character(who)))) %>%
+        mutate(ci_95=  ci_95 - 0.35 * ci_95 * as.numeric(grepl("Monk", who))) %>%
+        mutate(ci_95= ci_95 - 0.1 * ci_95 * as.numeric(grepl("Kid", who))) %>%
+        mutate(ci_95= ci_95 - 0.025 *ci_95 * as.numeric(grepl("Tsim", as.character(who)))) %>%
+        mutate(ci_95= ci_95 - 0.01 * ci_5* as.numeric(grepl("Adu", as.character(who)))) %>%
         
-        mutate(ci_5=  ci_5 - 0.3 * ci_5 * as.numeric(grepl("Monk", who))) %>%
-        mutate(ci_5= ci_5 - 0.04 * ci_5 * as.numeric(grepl("Kid", who))) %>%
-        mutate(ci_5= ci_5 - 0.01 * ci_5* as.numeric(grepl("Tsim", as.character(who)))) %>%
-        mutate(ci_5= ci_5 - 0.005 * ci_5* as.numeric(grepl("Adu", as.character(who)))) 
+        mutate(ci_5=  ci_5 - 0.35 * ci_5 * as.numeric(grepl("Monk", who))) %>%
+        mutate(ci_5= ci_5 - 0.1  * ci_5 * as.numeric(grepl("Kid", who))) %>%
+        mutate(ci_5= ci_5 - 0.025 * ci_5* as.numeric(grepl("Tsim", as.character(who)))) %>%
+        mutate(ci_5= ci_5 - 0.01 * ci_5* as.numeric(grepl("Adu", as.character(who)))) 
 
 
          #mutate(rec=rec * )
@@ -248,4 +329,4 @@ p.1 <- p.1 +paper_theme + ylab("p(center-embedding)") +
 
 
 head(m.rec.thetas)
-ggsave("thetas_recursive_no_noise.png",width=4,height=4)
+ggsave("thetas_recursive_no_noise.png",width=4,height=5)

@@ -13,7 +13,7 @@ data_monkey = read.csv(file_monkey)
 data_kids = read.csv(file_kids)
 data_tsimane = read.csv(file_tsimane)
 
-head(data_monkey)
+table(data_monkey$Exposure, data_monkey$Sub)
 
 #m = melt(data, id=c("who", "mean"))
 t1 <- 	theme(axis.text=element_text(size=26), 

@@ -53,7 +53,7 @@ def getKidsResponses(file, careAbout):
                 if val != "":
 
                     vals[sub].append(val)
-
+    data.close()
 
     return vals
 
@@ -113,15 +113,20 @@ def getCountData(file, careAbout, which, subset={}):
     dictMap = {"A": "[", "B": "]", "C": "(", "D": ")"}
     allC = []
     for key in resps.keys():
-        cs = getCounts(resps[key], dictMap)
-        allC.append(cs)
+
+        if len(resps[key]) > 0:
+            if "FORWARD" in careAbout[0]:
+                allC.append(resps[key][0])
+            else:
+                cs = getCounts(resps[key], dictMap)
+                allC.append(cs)
     # counts = getCounts(resps, dictMap)
     return allC
 
 
 if __name__ == "__main__":
     import scipy.stats as st
-    careAbout = "Order pressed"
+
     ##
 
 
@@ -145,14 +150,21 @@ if __name__ == "__main__":
 
    # file = "stevesdata/RecursionAdults.csv"
     #count = getCountData(file, careAbout, "Adults")
+    file = "stevesdata/RecursionKids_MoreSubs.csv"
 
-    file = "stevesdata/RecursionKids.csv"
-
+    careAbout = "Order pressed"
     count = getCountData(file, careAbout, "Kids")
 
+    careAbout= "FORWARDS DIGITS"
+
+    forward_dig = getCountData(file, careAbout, "Kids")
+    for c in forward_dig: 
+        print c
     # count
+    #for c in count:
+       # print c
 
-
+    assert(False)
     for c in count:
         tot = 0.
         p = 0.
